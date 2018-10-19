@@ -55,6 +55,7 @@ class BlogPostAPITestCase(APITestCase):
 
     def test_get_item(self):
         # test the get list
+        # change DEFAULT_PERMISSION_CLASSES in settings to IsAuthenticatedOrReadOnly to make this test case pass
         blog_post = BlogPost.objects.first()
         data = {}
         url = blog_post.get_api_url()
@@ -95,15 +96,42 @@ class BlogPostAPITestCase(APITestCase):
         response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_user_ownership`(self):
-        # test the get list
-        user_obj = User.objects.first()
-        payload  = payload_handler(user_obj)
-        token_rsp = encode_handler(payload)
+    def test_user_ownership(self):
+        # Need to understand why this scenario is failing
+        owner = User.objects.create(username='testuser22222')
+        blog_post = BlogPost.objects.create(
+                user=owner, 
+                title='New title', 
+                content='some_random_content'
+        )
+
+        user_obj            = User.objects.first()
+        self.assertNotEqual(user_obj.username, owner.username)
+        payload             = payload_handler(user_obj)
+        token_rsp           = encode_handler(payload)
         self.client.credentials(HTTP_AUTHORIZATION='JWT ' + token_rsp)
+        url = blog_post.get_api_url()
         data = {"title": "Some rando title", "content": "some more content"}
-        url = api_reverse("api-postings:post-create")
-        response = self.client.post(url, data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        response = self.client.put(url, data, format='json') # this should return Forbidden or unauthorized. Definetely not 200 as the curent behavior
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_user_login_and_update(self):
+        data = {
+            'username': 'testcfeuser',
+            'password': 'somerandopassword'
+        }
+        url = api_reverse("api-login")
+        response = self.client.post(url, data)
+        # print(response.data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        token = response.data.get("token")
+        if token is not None:
+            blog_post = BlogPost.objects.first()
+            #print(blog_post.content)
+            url = blog_post.get_api_url()
+            data = {"title": "Some rando title", "content": "some more content"}
+            self.client.credentials(HTTP_AUTHORIZATION='JWT ' + token) # JWT <token>
+            response = self.client.put(url, data, format='json')
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     
